@@ -15,6 +15,7 @@ import {
   Instagram,
   Laptop2,
   LayoutDashboard,
+  LogOut,
   Menu,
   MessageCircleMore,
   MessageSquare,
@@ -29,21 +30,25 @@ import {
   Target,
   TrendingUp,
   Trophy,
+  User,
   Users,
   X,
   Zap,
 } from "lucide-react";
 import "./styles.css";
 import { AdminDashboard } from "./components/AdminDashboard";
-import { AdminLoginModal } from "./components/AdminLoginModal";
+import { UserAuthModal } from "./components/UserAuthModal";
+import { CourseViewerModal } from "./components/CourseViewerModal";
 import {
-  addLead,
   getContacts,
   getCourses,
   getFAQs,
+  getStoredUser,
   isAdminLoggedIn,
-  subscribeStore,
-} from "./services/store";
+  logoutAdmin,
+  logoutUser,
+  submitLead,
+} from "./services/api";
 
 const services = [
   {
@@ -105,7 +110,7 @@ function Logo({ compact = false }) {
   );
 }
 
-function Header({ currentMode, onToggleMode }) {
+function Header({ currentMode, onOpenAuthModal, currentUser, onUserLogout, onOpenAdminConsole }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const close = () => setMenuOpen(false);
 
@@ -114,22 +119,24 @@ function Header({ currentMode, onToggleMode }) {
       <div className="container nav-wrap">
         <Logo />
         <div className="nav-right-group">
-          <button
-            className={`mode-toggle-btn ${currentMode === "admin" ? "is-admin" : ""}`}
-            onClick={onToggleMode}
-            type="button"
-            title="Switch between Learner View and Admin Dashboard"
-          >
-            {currentMode === "admin" ? (
-              <>
-                <Sparkles size={14} /> Admin Portal
-              </>
-            ) : (
-              <>
-                <LayoutDashboard size={14} /> Admin Login
-              </>
-            )}
-          </button>
+          {currentUser ? (
+            <div className="user-profile-badge">
+              <User size={14} />
+              <span>{currentUser.name}</span>
+              <button
+                className="btn-icon-sm"
+                onClick={onUserLogout}
+                title="Log out"
+                type="button"
+              >
+                <LogOut size={13} />
+              </button>
+            </div>
+          ) : (
+            <button className="button button--small" onClick={onOpenAuthModal} type="button">
+              Sign In
+            </button>
+          )}
 
           <button
             className="menu-button"
@@ -158,16 +165,6 @@ function Header({ currentMode, onToggleMode }) {
           <a href="#contact" onClick={close}>
             Contact
           </a>
-          <button
-            className="mode-toggle-nav-item"
-            onClick={() => {
-              close();
-              onToggleMode();
-            }}
-            type="button"
-          >
-            {currentMode === "admin" ? "🌐 Switch to Learner View" : "⚙️ Switch to Admin Console"}
-          </button>
           <a className="button button--small" href="#contact" onClick={close}>
             Book free call
           </a>
@@ -346,7 +343,7 @@ function SectionHeading({ eyebrow, title, description, centered = true }) {
   );
 }
 
-function CourseCard({ course }) {
+function CourseCard({ course, onOpenCourse, onWhatsAppEnrol }) {
   const Icon = course.accent === "mint" ? BarChart3 : course.accent === "orange" ? Sparkles : Code2;
   return (
     <article className="course-card">
@@ -372,16 +369,21 @@ function CourseCard({ course }) {
           <span>
             <Star size={15} fill="currentColor" /> {course.rating || "4.9"}
           </span>
-          <a href="#contact">
-            Enrol now <ArrowRight size={15} />
-          </a>
+          <div style={{ display: "flex", gap: "6px" }}>
+            <button className="button button--small button--outline" onClick={() => onOpenCourse(course)} type="button">
+              View Syllabus
+            </button>
+            <button className="button button--small" onClick={() => onWhatsAppEnrol(course)} type="button">
+              Enrol Now <ArrowRight size={14} />
+            </button>
+          </div>
         </div>
       </div>
     </article>
   );
 }
 
-function Courses({ courses }) {
+function Courses({ courses, onOpenCourse, onWhatsAppEnrol }) {
   return (
     <section className="section courses" id="courses">
       <div className="container">
@@ -392,17 +394,17 @@ function Courses({ courses }) {
               Choose a skill. <em>Start building.</em>
             </>
           }
-          description="Structured learning paths designed around the skills companies actually need."
+          description="Click Enrol Now to request course access directly from Prashant on WhatsApp!"
         />
         <div className="course-grid">
           {courses.map((course) => (
-            <CourseCard key={course.id || course.title} course={course} />
+            <CourseCard
+              key={course.id || course.title}
+              course={course}
+              onOpenCourse={onOpenCourse}
+              onWhatsAppEnrol={onWhatsAppEnrol}
+            />
           ))}
-        </div>
-        <div className="center-action">
-          <a className="text-link" href="#contact">
-            Browse all courses <ArrowRight size={16} />
-          </a>
         </div>
       </div>
     </section>
@@ -564,6 +566,7 @@ function Testimonial() {
 
 function Counselling() {
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     track: "Full-Stack",
     level: "Know the basics",
@@ -573,10 +576,17 @@ function Counselling() {
     query: "",
   });
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    addLead(formData);
-    setSubmitted(true);
+    setLoading(true);
+    try {
+      await submitLead(formData);
+      setSubmitted(true);
+    } catch (err) {
+      alert("Failed to submit query: " + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -590,11 +600,11 @@ function Counselling() {
             <em>we’ll map your path.</em>
           </h2>
           <p>
-            Have a question about a course or career roadmap? Type your query below and Prashant will review it directly in the Admin Portal.
+            Have a question about a course or career roadmap? Type your query below and Prashant will review it directly in the Admin Portal database.
           </p>
           <div className="counselling-benefits">
             <span>
-              <Check size={15} /> No sign-up needed
+              <Check size={15} /> Saved in Database
             </span>
             <span>
               <Clock3 size={15} /> Reply within 24 hours
@@ -614,9 +624,9 @@ function Counselling() {
               <span>
                 <Check size={27} />
               </span>
-              <h3>Query & Application Received!</h3>
+              <h3>Query & Application Saved!</h3>
               <p>
-                Thanks for reaching out! Your query has been recorded and is now visible in the Admin Dashboard query box.
+                Thanks for reaching out! Your query has been recorded in our backend database and is now visible in Prashant's Admin Dashboard.
               </p>
               <button
                 type="button"
@@ -714,8 +724,8 @@ function Counselling() {
                   <small>Direct to Prashant's Portal</small>
                   <strong>Send your query</strong>
                 </div>
-                <button className="button" type="submit">
-                  Submit Query <ArrowRight size={16} />
+                <button className="button" type="submit" disabled={loading}>
+                  {loading ? "Sending..." : "Submit Query"} <ArrowRight size={16} />
                 </button>
               </div>
             </>
@@ -802,13 +812,15 @@ function Footer({ contacts }) {
         </div>
         <div className="footer-column">
           <strong>Contact Prashant</strong>
-          <a href={contacts.whatsapp} target="_blank" rel="noopener noreferrer">
-            WhatsApp: {contacts.phone}
+          <a href={contacts.whatsapp || "https://wa.me/917627043971"} target="_blank" rel="noopener noreferrer">
+            WhatsApp: {contacts.phone || "7627043971"}
           </a>
-          <a href={contacts.instagram} target="_blank" rel="noopener noreferrer">
+          <a href={contacts.instagram || "https://www.instagram.com/prashant_singh_08__/"} target="_blank" rel="noopener noreferrer">
             Instagram: @prashant_singh_08__
           </a>
-          <a href={`mailto:${contacts.email}`}>Email: {contacts.email}</a>
+          <a href={`mailto:${contacts.email || "prashantking0880@gmail.com"}`}>
+            Email: {contacts.email || "prashantking0880@gmail.com"}
+          </a>
         </div>
         <div className="footer-column">
           <strong>Stay curious</strong>
@@ -871,7 +883,7 @@ function Chatbot({ courses, faqs, contacts }) {
   const [messages, setMessages] = useState([
     {
       role: "bot",
-      text: `Hi! I’m Nova Guide 👋 Connect with Prashant (+91 ${contacts.phone}) or ask me any question about our courses!`,
+      text: `Hi! I’m Nova Guide 👋 Connect with Prashant (+91 ${contacts.phone || "7627043971"}) or ask me any question about our courses!`,
     },
   ]);
 
@@ -907,7 +919,7 @@ function Chatbot({ courses, faqs, contacts }) {
   const quickReplies = useMemo(
     () => [
       "Show available courses",
-      `Chat on WhatsApp (${contacts.phone})`,
+      `Chat on WhatsApp (${contacts.phone || "7627043971"})`,
       "Do you offer certificates?",
     ],
     [contacts.phone],
@@ -989,49 +1001,85 @@ function Chatbot({ courses, faqs, contacts }) {
 
 function App() {
   const [viewMode, setViewMode] = useState("learner"); // 'learner' | 'admin'
-  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [selectedCourseForViewer, setSelectedCourseForViewer] = useState(null);
 
-  const [courses, setCourses] = useState(getCourses());
-  const [faqs, setFaqs] = useState(getFAQs());
-  const [contacts, setContacts] = useState(getContacts());
+  const [currentUser, setCurrentUser] = useState(getStoredUser());
+  const [courses, setCourses] = useState([]);
+  const [faqs, setFaqs] = useState([]);
+  const [contacts, setContacts] = useState({});
 
-  useEffect(() => {
-    const unsubscribe = subscribeStore(() => {
-      setCourses(getCourses());
-      setFaqs(getFAQs());
-      setContacts(getContacts());
-    });
-    return unsubscribe;
-  }, []);
-
-  const handleToggleMode = () => {
-    if (viewMode === "admin") {
-      setViewMode("learner");
-    } else {
-      if (isAdminLoggedIn()) {
-        setViewMode("admin");
-      } else {
-        setShowLoginModal(true);
-      }
+  const loadBackendData = async () => {
+    try {
+      const [c, f, cont] = await Promise.all([
+        getCourses().catch(() => []),
+        getFAQs().catch(() => []),
+        getContacts().catch(() => ({})),
+      ]);
+      setCourses(c);
+      setFaqs(f);
+      setContacts(cont);
+    } catch (err) {
+      console.error("Error loading data from API:", err);
     }
   };
 
-  const handleLoginSuccess = () => {
-    setShowLoginModal(false);
+  useEffect(() => {
+    loadBackendData();
+  }, []);
+
+  const handleAdminSuccess = () => {
+    setShowAuthModal(false);
     setViewMode("admin");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const handleUserSuccess = (user) => {
+    setCurrentUser(user);
+    setShowAuthModal(false);
+  };
+
+  const handleUserLogout = () => {
+    logoutUser();
+    logoutAdmin();
+    setCurrentUser(null);
+  };
+
+  const handleWhatsAppEnrol = (course) => {
+    const message = `Hi Prashant! I want to enrol in the course: "${course.title}". Please grant me course access.`;
+    const waUrl = `https://wa.me/917627043971?text=${encodeURIComponent(message)}`;
+    window.open(waUrl, "_blank", "noopener,noreferrer");
+    // Also open course syllabus/video modal
+    setSelectedCourseForViewer(course);
+  };
+
   if (viewMode === "admin") {
-    return <AdminDashboard onReturnToUser={() => setViewMode("learner")} />;
+    return (
+      <AdminDashboard
+        onReturnToUser={() => {
+          setViewMode("learner");
+          loadBackendData();
+        }}
+      />
+    );
   }
 
   return (
     <>
-      <Header currentMode={viewMode} onToggleMode={handleToggleMode} />
+      <Header
+        currentMode={viewMode}
+        onOpenAuthModal={() => setShowAuthModal(true)}
+        currentUser={currentUser}
+        onUserLogout={handleUserLogout}
+        onOpenAdminConsole={() => setViewMode("admin")}
+      />
       <main>
         <Hero />
-        <Courses courses={courses} />
+        <Courses
+          courses={courses}
+          onOpenCourse={(c) => setSelectedCourseForViewer(c)}
+          onWhatsAppEnrol={handleWhatsAppEnrol}
+        />
         <LearningPaths />
         <RoadmapBanner />
         <Testimonial />
@@ -1041,10 +1089,17 @@ function App() {
       <Footer contacts={contacts} />
       <Chatbot contacts={contacts} courses={courses} faqs={faqs} />
 
-      <AdminLoginModal
-        isOpen={showLoginModal}
-        onClose={() => setShowLoginModal(false)}
-        onSuccess={handleLoginSuccess}
+      <UserAuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onUserSuccess={handleUserSuccess}
+        onAdminSuccess={handleAdminSuccess}
+      />
+
+      <CourseViewerModal
+        course={selectedCourseForViewer}
+        isOpen={!!selectedCourseForViewer}
+        onClose={() => setSelectedCourseForViewer(null)}
       />
     </>
   );
